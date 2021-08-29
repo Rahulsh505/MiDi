@@ -1,0 +1,111 @@
+#include "MIDIUSB.h"
+
+const int nbutton = 8;
+const int buttonpin[nbutton] = {5,4,3,2,9,8,7,6};
+int buttoncstate[nbutton]={0};
+int buttonpstate[nbutton]={0};
+
+unsigned long lastdebouncetime[nbutton]={0};
+unsigned long debouncedelay=5;
+
+//potentiometer
+
+const int npot=4;
+int potpin[npot]={A0,A1,A2,A3};
+int potcstate[npot]={0};
+int potpstate[npot]={0};
+int potvar=0;
+
+int midicstate[npot]={0};
+int midipstate[npot]={0};
+
+int timeout=300;
+int varthreshold=10;
+boolean potmoving = true;
+unsigned long ptime[npot]={0};
+unsigned long timer[npot]={0};
+
+byte midich = 1;
+byte note = 36;
+byte cc = 1;
+
+
+void noteOn(byte channel, byte pitch, byte velocity) {
+  midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOn);
+}
+
+void noteOff(byte channel, byte pitch, byte velocity) {
+  midiEventPacket_t noteOff = {0x08, 0x80 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOff);
+}
+void controlChange(byte channel, byte control, byte value) {
+  midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
+  MidiUSB.sendMIDI(event);
+}
+
+void setup() {
+ // Serial.begin(115200);
+ for(int i=0 ; i<nbutton ;i++){
+  pinMode(buttonpin[i],INPUT_PULLUP);
+ }
+}
+
+
+
+
+
+void loop() {
+buttons();
+pots();
+}
+
+void buttons() {
+   for(int i=0; i < nbutton;i++){
+    buttoncstate[i]=digitalRead(buttonpin[i]);
+    if((millis()-lastdebouncetime[i]) > debouncedelay){
+      if(buttonpstate[i]!=buttoncstate[i]){
+        lastdebouncetime[i]=millis();
+
+        if(buttoncstate[i]==LOW){
+          noteOn(midich , note + i, 127);
+          MidiUSB.flush();
+        }
+        else{
+          noteOff(midich , note + i,0);
+          MidiUSB.flush();
+        }
+        buttonpstate[i]=buttoncstate[i];
+      }
+    }
+   }
+}
+void pots(){
+   for ( int i = 0 ; i < npot; i++ ){
+    potcstate[i]=analogRead(potpin[i]);
+    midicstate[i]=map(potcstate[i],0,1023,0,127);
+
+    potvar = abs(potcstate[i] - potpstate[i]);
+
+    if (potvar > varthreshold){
+      ptime[i]=millis();
+    }
+    timer[i]=millis()-ptime[i];
+
+    if(timer[i] < timeout) {
+      potmoving = true;
+    }
+    else{
+      potmoving = false;
+    }
+    if(potmoving == true){
+      if(midipstate[i]!=midicstate[i]){
+        controlChange(midich , cc + i , midicstate[i]);
+        MidiUSB.flush();
+
+        potpstate[i]=potcstate[i];
+        midipstate[i]=midicstate[i];
+      }
+    }
+}
+}
